@@ -4,7 +4,7 @@
 
 // Simple demo.
 int main() {
-  constexpr int kCompressionLevel = 0;
+  constexpr int kCompressionLevel = 9;
   const char *out_file = "test-output.zip";
 
   FILE *out = fopen(out_file, "wb");

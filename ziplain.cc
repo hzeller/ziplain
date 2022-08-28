@@ -8,10 +8,6 @@
 #include <memory>
 #include <vector>
 
-// Compression currently not implemented. Follow this macro to find all the
-// places to change and then remove this macro :)
-#define COMPRESSION_IMPLEMENTED 0
-
 namespace ziplain {
 ByteSource MemoryByteSource(std::string_view input) {
   auto is_called = std::make_shared<bool>(false);
@@ -80,6 +76,11 @@ class HeaderWriter {
 
 struct Encoder::Impl {
   static constexpr int16_t kPkZipVersion = 20;  // 2.0, pretty basic.
+  struct CompressResult {
+    uint32_t input_crc;
+    size_t input_size;
+    size_t output_size;
+  };
 
   Impl(int compression_level, ByteSink out)
       : compression_level_(compression_level),
@@ -91,6 +92,8 @@ struct Encoder::Impl {
 
   bool AddFile(std::string_view filename, ByteSource content_generator) {
     if (is_finished_) return false;  // Can't add more files.
+    if (!content_generator) return false;
+
     ++file_count_;
     const size_t start_offset = output_file_offset_;
 
@@ -98,15 +101,11 @@ struct Encoder::Impl {
     const uint16_t mod_date = 0;
 
     bool success =  // Assemble local file header
-      HeaderWriter(scratch_space)
+      HeaderWriter(scratch_space_)
         .AddLiteral("PK\x03\x04")
         .AddInt16(kPkZipVersion)  // Minimum version needed
         .AddInt16(0x08)           // Flags. Sizes and CRC in data descriptor.
-#if COMPRESSION_IMPLEMENTED
         .AddInt16(compression_level_ <= 0 ? 0 : 8)
-#else
-        .AddInt16(0)  // Currently only no compression.
-#endif
         .AddInt16(mod_time)
         .AddInt16(mod_date)
         .AddInt32(0)  // CRC32. Known later.
@@ -118,44 +117,30 @@ struct Encoder::Impl {
         .Write(out_);
     if (!success) return false;
 
-    // Copy out the data.
-    uint32_t crc = 0;
-    std::string_view chunk;
-    size_t size_before_compression = 0;
-    size_t size_after_compression = 0;
-    while (!(chunk = content_generator()).empty()) {
-      crc = crc32(crc, (const Bytef *)chunk.data(), chunk.size());
-      size_before_compression += chunk.size();
-#if COMPRESSION_IMPLEMENTED
-#     error "TODO: Compression not implemented"
-#endif
-      out_(chunk);  // TODO: gracefully deal with unsuccessful write
-      size_after_compression += chunk.size();
-    }
+    // Data output
+    const CompressResult compress_result =
+      compression_level_ == 0 ? CopyData(content_generator, out_)
+                              : CompressData(content_generator, out_);
 
     success =  // Assemble Data Descriptor after file with known CRC and size.
-      HeaderWriter(scratch_space)
-        .AddInt32(crc)
-        .AddInt32(size_after_compression)
-        .AddInt32(size_before_compression)
+      HeaderWriter(scratch_space_)
+        .AddInt32(compress_result.input_crc)
+        .AddInt32(compress_result.output_size)
+        .AddInt32(compress_result.input_size)
         .Write(out_);
 
     // Append directory file header entry to be written in Finish()
-    HeaderWriter(scratch_space)
+    HeaderWriter(scratch_space_)
       .AddLiteral("PK\x01\x02")
       .AddInt16(kPkZipVersion)  // Our Version
       .AddInt16(kPkZipVersion)  // Readable by version
       .AddInt16(0x08)           // Flag
-#if COMPRESSION_IMPLEMENTED
       .AddInt16(compression_level_ <= 0 ? 0 : 8)
-#else
-      .AddInt16(0)
-#endif
       .AddInt16(mod_time)
       .AddInt16(mod_date)
-      .AddInt32(crc)  // CRC32
-      .AddInt32(size_after_compression)
-      .AddInt32(size_before_compression)
+      .AddInt32(compress_result.input_crc)
+      .AddInt32(compress_result.output_size)
+      .AddInt32(compress_result.input_size)
       .AddInt16(filename.length())
       .AddInt16(0)  // Extra field length
       .AddInt16(0)  // file comment length
@@ -179,7 +164,7 @@ struct Encoder::Impl {
 
     // End of central directory record
     constexpr std::string_view comment("Created with ziplain");
-    return HeaderWriter(scratch_space)
+    return HeaderWriter(scratch_space_)
       .AddLiteral("PK\x05\x06")  // End of central directory signature
       .AddInt16(0)               // our disk number
       .AddInt16(0)               // disk where it all starts
@@ -192,6 +177,51 @@ struct Encoder::Impl {
       .Write(out_);
   }
 
+  CompressResult CopyData(ByteSource generator, ByteSink out) {
+    uint32_t crc = 0;
+    size_t processed_size = 0;
+    std::string_view chunk;
+    while (!(chunk = generator()).empty()) {
+      crc = crc32(crc, (const uint8_t *)chunk.data(), chunk.size());
+      processed_size += chunk.size();
+      out(chunk);
+    }
+    return {crc, processed_size, processed_size};
+  }
+
+  CompressResult CompressData(ByteSource generator, ByteSink out) {
+    uint32_t crc = 0;
+    std::string_view chunk;
+    z_stream stream;
+    memset(&stream, 0x00, sizeof(stream));
+
+    // Need negative window bits to tell zlib not to create a header.
+    deflateInit2(&stream, compression_level_, Z_DEFLATED, -15 /*window bits*/,
+                 9 /* memlevel*/, 0);
+
+    const size_t kScratchSize = sizeof(scratch_space_);
+    do {
+      chunk = generator();
+      const int flush_setting = chunk.empty() ? Z_FINISH : Z_NO_FLUSH;
+      if (!chunk.empty())
+        crc = crc32(crc, (const uint8_t *)chunk.data(), chunk.size());
+
+      stream.avail_in = chunk.size();
+      stream.next_in = (uint8_t *)chunk.data();
+      do {
+        stream.avail_out = kScratchSize;
+        stream.next_out = (uint8_t *)scratch_space_;
+        deflate(&stream, flush_setting);
+        const size_t output_size = kScratchSize - stream.avail_out;
+        if (output_size) out({scratch_space_, output_size});
+      } while (stream.avail_out != kScratchSize);
+    } while (!chunk.empty());
+
+    CompressResult result = { crc, stream.total_in, stream.total_out };
+    deflateEnd(&stream);
+    return result;
+  }
+
   const int compression_level_;
   const ByteSink delegate_write_;
   const ByteSink out_;
@@ -200,7 +230,7 @@ struct Encoder::Impl {
   size_t output_file_offset_ = 0;
   std::vector<char> central_dir_data_;
   bool is_finished_ = false;
-  char scratch_space[1 << 20];  // to assemble headers and compression data
+  char scratch_space_[1 << 20];  // to assemble headers and compression data
 };
 
 Encoder::Encoder(int compression_level, ByteSink out)

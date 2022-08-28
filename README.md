@@ -1,17 +1,17 @@
 # ZIPlain
 
-A plain, no-frills [ZIP-file] encoder (that currently doesn't even do
-compression).
+A plain, no-frills [ZIP-file] encoder.
 
 Provides class `ziplain::Encoder` to create a ZIP file. Abstractions
 for `ByteSource` and `ByteSink` allow to adapt it to local IO requirements.
 
 In the following example, we provide the output `ByteSink` by implementing
 a closure wrapping a `FILE*` stream.
-As input `ByteSinks`, ziplain-provided wrappers for files and in-memory
+As input `ByteSource`, ziplain-provided wrappers for files and in-memory
 representations are used.
 
 ```c++
+constexpr int kCompressionLevel = 9;
 FILE *out = fopen("test-output.zip", "wb");
 ziplain::Encoder zipper(kCompressionLevel, [out](std::string_view s) {
   return fwrite(s.data(), 1, s.size(), out) == s.size();
