@@ -27,7 +27,7 @@ ByteSource FileByteSource(const char *filename) {
     State(FILE *f) : file(f) {}
     ~State() { fclose(file); }
     FILE *file;
-    char buffer[4096];
+    char buffer[65536];
   };
   auto state = std::make_shared<State>(f);  // capture req. copy-constructable
   return [state]() -> std::string_view {
@@ -214,7 +214,7 @@ struct Encoder::Impl {
         deflate(&stream, flush_setting);
         const size_t output_size = kScratchSize - stream.avail_out;
         if (output_size) out({scratch_space_, output_size});
-      } while (stream.avail_out != kScratchSize);
+      } while (stream.avail_out == 0);
     } while (!chunk.empty());
 
     CompressResult result = { crc, stream.total_in, stream.total_out };
