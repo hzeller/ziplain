@@ -83,7 +83,9 @@ struct Encoder::Impl {
   };
 
   Impl(int compression_level, ByteSink out)
-      : compression_level_(compression_level),
+      : compression_level_(compression_level < 0   ? 0
+                           : compression_level > 9 ? 9
+                                                   : compression_level),
         delegate_write_(std::move(out)),
         out_([this](std::string_view s) {
           output_file_offset_ += s.size();  // Keep track of offsets.
@@ -105,7 +107,7 @@ struct Encoder::Impl {
         .AddLiteral("PK\x03\x04")
         .AddInt16(kPkZipVersion)  // Minimum version needed
         .AddInt16(0x08)           // Flags. Sizes and CRC in data descriptor.
-        .AddInt16(compression_level_ <= 0 ? 0 : 8)
+        .AddInt16(compression_level_ == 0 ? 0 : 8)
         .AddInt16(mod_time)
         .AddInt16(mod_date)
         .AddInt32(0)  // CRC32. Known later.
@@ -135,7 +137,7 @@ struct Encoder::Impl {
       .AddInt16(kPkZipVersion)  // Our Version
       .AddInt16(kPkZipVersion)  // Readable by version
       .AddInt16(0x08)           // Flag
-      .AddInt16(compression_level_ <= 0 ? 0 : 8)
+      .AddInt16(compression_level_ == 0 ? 0 : 8)
       .AddInt16(mod_time)
       .AddInt16(mod_date)
       .AddInt32(compress_result.input_crc)
