@@ -4,6 +4,7 @@
 #include <string.h>
 #include <zlib.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <vector>
@@ -83,16 +84,14 @@ struct Encoder::Impl {
   };
 
   Impl(int compression_level, ByteSink out)
-      : compression_level_(compression_level < 0   ? 0
-                           : compression_level > 9 ? 9
-                                                   : compression_level),
+      : compression_level_(std::clamp(compression_level, 0, 9)),
         delegate_write_(std::move(out)),
         out_([this](std::string_view s) {
           output_file_offset_ += s.size();  // Keep track of offsets.
           return delegate_write_(s);
         }) {}
 
-  bool AddFile(std::string_view filename, ByteSource content_generator) {
+  bool AddFile(std::string_view filename, const ByteSource &content_generator) {
     if (is_finished_) return false;  // Can't add more files.
     if (!content_generator) return false;
 
@@ -121,8 +120,8 @@ struct Encoder::Impl {
 
     // Data output
     const CompressResult compress_result =
-      compression_level_ == 0 ? CopyData(content_generator, out_)
-                              : CompressData(content_generator, out_);
+      compression_level_ == 0 ? CopyDataToOutput(content_generator)
+                              : CompressDataToOutput(content_generator);
 
     success =  // Assemble Data Descriptor after file with known CRC and size.
       HeaderWriter(scratch_space_)
@@ -179,19 +178,19 @@ struct Encoder::Impl {
       .Write(out_);
   }
 
-  CompressResult CopyData(ByteSource generator, ByteSink out) {
+  CompressResult CopyDataToOutput(const ByteSource &generator) {
     uint32_t crc = 0;
     size_t processed_size = 0;
     std::string_view chunk;
     while (!(chunk = generator()).empty()) {
       crc = crc32(crc, (const uint8_t *)chunk.data(), chunk.size());
       processed_size += chunk.size();
-      out(chunk);
+      out_(chunk);
     }
     return {crc, processed_size, processed_size};
   }
 
-  CompressResult CompressData(ByteSource generator, ByteSink out) {
+  CompressResult CompressDataToOutput(const ByteSource &generator) {
     uint32_t crc = 0;
     std::string_view chunk;
     z_stream stream;
@@ -215,11 +214,11 @@ struct Encoder::Impl {
         stream.next_out = (uint8_t *)scratch_space_;
         deflate(&stream, flush_setting);
         const size_t output_size = kScratchSize - stream.avail_out;
-        if (output_size) out({scratch_space_, output_size});
+        if (output_size) out_({scratch_space_, output_size});
       } while (stream.avail_out == 0);
     } while (!chunk.empty());
 
-    CompressResult result = { crc, stream.total_in, stream.total_out };
+    CompressResult result = {crc, stream.total_in, stream.total_out};
     deflateEnd(&stream);
     return result;
   }
@@ -240,8 +239,9 @@ Encoder::Encoder(int compression_level, ByteSink out)
 
 Encoder::~Encoder() {}
 
-bool Encoder::AddFile(std::string_view filename, ByteSource content) {
-  return impl_->AddFile(filename, std::move(content));
+bool Encoder::AddFile(std::string_view filename,
+                      const ByteSource &content_generator) {
+  return impl_->AddFile(filename, content_generator);
 }
 bool Encoder::Finish() { return impl_->Finish(); }
 }  // namespace ziplain
