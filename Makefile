@@ -5,5 +5,8 @@ demo: demo.o ziplain.o
 
 ziplain.o: ziplain.cc
 
+test: demo
+	./test.sh
+
 clean:
 	rm -f *.o demo

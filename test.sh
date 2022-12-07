@@ -2,7 +2,6 @@
 
 cd $(dirname $0)
 
-make demo
 ./demo
 unzip -t test-output.zip
 
