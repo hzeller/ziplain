@@ -1,6 +1,6 @@
-#include "ziplain.h"
-
 #include <stdio.h>
+
+#include "ziplain.h"
 
 // Simple demo.
 int main() {
@@ -12,9 +12,10 @@ int main() {
     return fwrite(s.data(), 1, s.size(), out) == s.size();
   });
 
-  zipper.AddFile("ziplain.h", ziplain::FileByteSource("ziplain.h"));
-  zipper.AddFile("ziplain.cc", ziplain::FileByteSource("ziplain.cc"));
-  zipper.AddFile("readme.txt", ziplain::MemoryByteSource("Hello world!\n"));
+  zipper.AddFile("dir/", ziplain::MemoryByteSource(""));
+  zipper.AddFile("dir/ziplain.h", ziplain::FileByteSource("ziplain.h"));
+  zipper.AddFile("dir/ziplain.cc", ziplain::FileByteSource("ziplain.cc"));
+  zipper.AddFile("dir/readme.txt", ziplain::MemoryByteSource("Hello world!\n"));
   zipper.Finish();
 
   fclose(out);
