@@ -17,5 +17,8 @@ cc_library(
     name = "ziplain",
     srcs = ["ziplain.cc"],
     hdrs = ["ziplain.h"],
-    deps = ["@zlib"],
+    deps = [
+        "//third_party:portable_endian",
+        "@zlib",
+    ],
 )

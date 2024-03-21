@@ -14,7 +14,6 @@
 
 #include "ziplain.h"
 
-#include <endian.h>
 #include <string.h>
 #include <zlib.h>
 
@@ -25,6 +24,8 @@
 #include <string>
 #include <string_view>
 #include <utility>
+
+#include "third_party/portable_endian.h"
 
 namespace ziplain {
 
