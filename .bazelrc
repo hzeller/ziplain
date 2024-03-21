@@ -3,9 +3,5 @@ common --enable_bzlmod
 build --cxxopt=-xc++                    --host_cxxopt=-xc++
 build --cxxopt=-std=c++17               --host_cxxopt=-std=c++17
 
-# Avoid costly language features
-build --cxxopt=-fno-exceptions          --host_cxxopt=-fno-exceptions
-build --cxxopt=-fno-rtti                --host_cxxopt=-fno-rtti
-
 # Load user-specific configuration, if any.
 try-import %workspace%/user.bazelrc

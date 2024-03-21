@@ -1,6 +1,6 @@
 # ZIPlain
 
-A plain, no-frills [ZIP-file] encoder.
+A plain, no-frills [ZIP-file] encoder with a simple [API](./ziplain.h).
 
 Provides class `ziplain::Encoder` to create a ZIP file. Abstractions
 for `ByteSource` and `ByteSink` allow to adapt it to local IO requirements.
@@ -13,7 +13,7 @@ make test
 ```
 (TODO: create a make install with pkg-config).
 
-Also, for integration in bazel-based builds, a MODULE.bazel and BUILD is
+Also, for integration in bazel-based builds, a `MODULE.bazel` and `BUILD` is
 included.
 
 ```
