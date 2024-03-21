@@ -10,5 +10,9 @@ pkgs.mkShell {
       zlib
   
       unzip  # for running tests
+
+      # For use with bazel
+      bazel_6
+      bazel-buildtools
     ];
 }
