@@ -3,4 +3,6 @@
 demo
 test-output.zip
 .envrc
+bazel-*
+*.lock
 
