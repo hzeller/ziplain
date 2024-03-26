@@ -8,7 +8,7 @@ package(
 # Machine-readable license specification.
 license(
     name = "license",
-    package_name = "verible",
+    package_name = "ziplain",
     license_kind = "@rules_license//licenses/spdx:Apache-2.0",
     license_text = "LICENSE",
 )
